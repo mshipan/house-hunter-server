@@ -1,7 +1,9 @@
 const express = require("express");
 const app = express();
 const cors = require("cors");
+const jwt = require("jsonwebtoken");
 const { MongoClient, ServerApiVersion } = require("mongodb");
+const bcrypt = require("bcrypt");
 require("dotenv").config();
 const port = process.env.PORT || 5000;
 
@@ -29,6 +31,23 @@ const client = new MongoClient(uri, {
   },
 });
 
+// middleware to verify jwt token
+const verifyJWT = (req, res, next) => {
+  const token = req.headers.authorization;
+
+  if (!token) {
+    return res.status(403).json({ error: "Access denied. Token is missing." });
+  }
+
+  jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, user) => {
+    if (err) {
+      return res.status(403).json({ error: "Access denied. Invalid token." });
+    }
+    req.user = user;
+    next();
+  });
+};
+
 async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
@@ -37,6 +56,75 @@ async function run() {
     const usersCollection = client.db("house-hunter").collection("users");
     //collections end
     // APIs start
+
+    //registration endpoint
+    app.post("/register", async (req, res) => {
+      const userData = req.body;
+
+      try {
+        const existingUser = await usersCollection.findOne({
+          email: userData.email,
+        });
+
+        if (existingUser) {
+          return res.status(409).json({ error: "User already exists" });
+        }
+
+        const hashedPassword = await bcrypt.hash(userData.password, 10);
+
+        const newUser = {
+          name: userData.name,
+          role: userData.role,
+          phone: userData.phone,
+          email: userData.email,
+          password: hashedPassword,
+        };
+
+        const result = await usersCollection.insertOne(newUser);
+
+        const token = jwt.sign(
+          { email: userData.email },
+          process.env.ACCESS_TOKEN_SECRET,
+          { expiresIn: "1h" }
+        );
+
+        res.status(201).json({ token });
+      } catch (error) {
+        console.error("Registration Failed:", error);
+        res.status(500).json({ error: "Internal Server Error" });
+      }
+    });
+
+    // Login endpoint
+    app.post("/login", async (req, res) => {
+      const { email, password } = req.body;
+
+      try {
+        const user = await usersCollection.findOne({ email });
+        if (!user) {
+          return res.status(401).json({ error: "Invalid email or password" });
+        }
+
+        const passwordMatch = await bcrypt.compare(password, user.password);
+
+        if (!passwordMatch) {
+          return res.status(401).json({ error: "Invalid email or password" });
+        }
+
+        const token = jwt.sign(
+          { email: user.email },
+          process.env.ACCESS_TOKEN_SECRET,
+          {
+            expiresIn: "1h",
+          }
+        );
+        res.json({ token });
+      } catch (error) {
+        console.error("Login failed:", error);
+        res.status(500).json({ error: "Internal Server Error" });
+      }
+    });
+
     // APIs end
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
