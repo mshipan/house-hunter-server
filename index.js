@@ -82,13 +82,21 @@ async function run() {
 
         const result = await usersCollection.insertOne(newUser);
 
+        const registeredUser = {
+          _id: result.insertedId,
+          name: newUser.name,
+          role: newUser.role,
+          phone: newUser.phone,
+          email: newUser.email,
+        };
+
         const token = jwt.sign(
           { email: userData.email },
           process.env.ACCESS_TOKEN_SECRET,
           { expiresIn: "1h" }
         );
 
-        res.status(201).json({ token });
+        res.status(201).json({ token, user: registeredUser });
       } catch (error) {
         console.error("Registration Failed:", error);
         res.status(500).json({ error: "Internal Server Error" });
@@ -118,11 +126,24 @@ async function run() {
             expiresIn: "1h",
           }
         );
-        res.json({ token });
+        res.json({ token, user });
       } catch (error) {
         console.error("Login failed:", error);
         res.status(500).json({ error: "Internal Server Error" });
       }
+    });
+
+    // users Api
+    app.get("/users", async (req, res) => {
+      const result = await usersCollection.find().toArray();
+      res.send(result);
+    });
+
+    app.get("/user/:email", async (req, res) => {
+      const email = req.params.email;
+      const query = { email: email };
+      const result = await usersCollection.findOne(query);
+      res.send(result);
     });
 
     // APIs end
