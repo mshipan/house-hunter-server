@@ -33,17 +33,20 @@ const client = new MongoClient(uri, {
 
 // middleware to verify jwt token
 const verifyJWT = (req, res, next) => {
-  const token = req.headers.authorization;
-
-  if (!token) {
-    return res.status(403).json({ error: "Access denied. Token is missing." });
+  const authorization = req.headers.authorization;
+  if (!authorization) {
+    return res
+      .status(401)
+      .send({ error: true, message: "unauthorized access" });
   }
-
-  jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, user) => {
+  const token = authorization.split(" ")[1];
+  jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
     if (err) {
-      return res.status(403).json({ error: "Access denied. Invalid token." });
+      return res
+        .status(401)
+        .send({ error: true, message: "unauthorized access" });
     }
-    req.user = user;
+    req.decoded = decoded;
     next();
   });
 };
@@ -134,7 +137,8 @@ async function run() {
     });
 
     // users Api
-    app.get("/users", async (req, res) => {
+    app.get("/users", verifyJWT, async (req, res) => {
+      const decoded = req.decoded;
       const result = await usersCollection.find().toArray();
       res.send(result);
     });
